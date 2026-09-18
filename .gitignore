@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -22,7 +24,11 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+*.key
+*.p12
+*.pfx
 
 # debug
 npm-debug.log*
@@ -30,11 +36,25 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# Local credentials; commit only the empty setup template.
 .env*
+!.env.example
 
 # vercel
 .vercel
+/.netlify/
+
+# Supabase CLI local state (keep migrations in Git)
+/supabase/.temp/
+/supabase/.branches/
+
+# Local editor and agent settings
+/.idea/
+/.vscode/
+/.codex/
+*.swp
+*.swo
+*~
 
 # typescript
 *.tsbuildinfo
