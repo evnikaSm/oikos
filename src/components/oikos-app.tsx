@@ -1,5 +1,7 @@
 "use client";
 
+import { ThemeSettings } from "./theme-settings";
+
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import CleaningCalendar from "./cleaning-calendar";
 import { QRCodeSVG } from "qrcode.react";
@@ -390,7 +392,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     return (
         <div className="min-h-[100dvh] bg-[var(--oikos-cream)] text-[var(--oikos-burgundy)]">
             <div className="app-shell mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col px-3 pb-40 pt-3 sm:px-6">
-                <header className="mb-3 rounded-[28px] bg-[var(--oikos-ivory)] px-4 py-4 shadow-[0_12px_30px_rgba(40,0,3,0.08)] ring-1 ring-black/5">
+                <header className="mb-3 rounded-[28px] bg-[var(--oikos-ivory)] px-4 py-4 shadow-[0_12px_30px_rgba(40,0,3,0.08)] ring-1 ring-[var(--oikos-line)]">
                     <div>
                         <p className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--oikos-green)]">Oikos</p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -547,7 +549,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                 <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]" onClick={() => setQuickOpen(false)} />
             )}
             {quickOpen && (
-                <div className="fixed bottom-24 right-4 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-[24px] bg-[var(--oikos-ivory)] p-3 shadow-[0_24px_60px_rgba(40,0,3,0.18)] ring-1 ring-black/5">
+                <div className="fixed bottom-24 right-4 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-[24px] bg-[var(--oikos-ivory)] p-3 shadow-[0_24px_60px_rgba(40,0,3,0.18)] ring-1 ring-[var(--oikos-line)]">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--oikos-green)]">{t.quickActions}</p>
                     <div className="space-y-2">
                         <QuickActionRow icon={Plus} label={t.addShoppingItem} onClick={() => { setSheetMode("add-item"); setQuickOpen(false); }} />
@@ -686,7 +688,7 @@ function HomeTab({
             </div>
 
             <section className="grid gap-3">
-                <section className="rounded-[28px] bg-[var(--oikos-yellow)]/35 p-5 shadow-[0_14px_40px_rgba(40,0,3,0.08)] ring-1 ring-black/5">
+                <section className="rounded-[28px] bg-[var(--oikos-yellow)]/35 p-5 shadow-[0_14px_40px_rgba(40,0,3,0.08)] ring-1 ring-[var(--oikos-line)]">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <p className="text-sm font-medium text-[var(--oikos-green)]">Dzisiaj</p>
@@ -1012,6 +1014,8 @@ function HouseTab({
                 </div>
             </section>
 
+            <ThemeSettings />
+
             <section className="panel">
                 <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
                     <div>
@@ -1023,7 +1027,7 @@ function HouseTab({
                             <span className="rounded-full bg-[var(--oikos-cream)] px-3 py-2 text-xs font-medium text-[var(--oikos-green)]">{state.house.inviteLink}</span>
                         </div>
                     </div>
-                    <div className="rounded-[24px] bg-white p-3 shadow-sm ring-1 ring-black/5">
+                    <div className="rounded-[24px] bg-white p-3 shadow-sm ring-1 ring-[var(--oikos-line)]">
                         <QRCodeSVG value={state.house.inviteLink} size={148} fgColor="#280003" bgColor="#FFFDF9" includeMargin />
                     </div>
                 </div>
@@ -1050,7 +1054,7 @@ function HouseTab({
                                         Włącz do rotacji
                                     </label>
                                     {member.id !== state.activeMemberId ? (
-                                        <button className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-[var(--oikos-burgundy)] shadow-sm" onClick={() => onRemoveMember(member.id)}>
+                                        <button className="rounded-full bg-[var(--oikos-ivory)] px-3 py-2 text-xs font-semibold text-[var(--oikos-burgundy)] shadow-sm" onClick={() => onRemoveMember(member.id)}>
                                             Usuń
                                         </button>
                                     ) : null}
@@ -1107,7 +1111,7 @@ function QuickActionButton({ open, onToggle }: { open: boolean; onToggle: () => 
 
 function BottomNav({ activeTab, onChange, t }: { activeTab: TabKey; onChange: (tab: TabKey) => void; t: typeof copy }) {
     return (
-        <nav aria-label="Nawigacja główna" className="fixed inset-x-0 bottom-0 z-50 mt-auto border-t border-black/5 bg-[rgba(255,253,249,0.98)] px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur supports-[backdrop-filter]:bg-[rgba(255,253,249,0.94)]">
+        <nav aria-label="Nawigacja główna" className="fixed inset-x-0 bottom-0 z-50 mt-auto border-t border-[var(--oikos-line)] bg-[var(--oikos-nav)] px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
             <div className="mx-auto grid max-w-[700px] grid-cols-5 gap-1">
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
@@ -1141,7 +1145,7 @@ function SheetOverlay({ children, onClose }: { children: ReactNode; onClose: () 
 
 function SheetCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
     return (
-        <div className="rounded-[28px] bg-[var(--oikos-ivory)] p-5 shadow-[0_24px_60px_rgba(40,0,3,0.22)] ring-1 ring-black/5">
+        <div className="rounded-[28px] bg-[var(--oikos-ivory)] p-5 shadow-[0_24px_60px_rgba(40,0,3,0.22)] ring-1 ring-[var(--oikos-line)]">
             <div className="flex items-center gap-3">
                 <div className="rounded-2xl bg-[var(--oikos-yellow)] p-2 text-[var(--oikos-burgundy)]"><Icon size={20} /></div>
                 <h3 className="text-lg font-semibold">{title}</h3>
@@ -1167,7 +1171,7 @@ function ActionRow({ children }: { children: ReactNode }) {
 function MetricCard({ label, value, tone }: { label: string; value: string; tone: "yellow" | "green" | "ivory" }) {
     const styles = {
         yellow: "bg-[var(--oikos-yellow)]",
-        green: "bg-[rgba(53,82,74,0.12)]",
+        green: "bg-[var(--oikos-green-soft)]",
         ivory: "bg-[var(--oikos-ivory)]",
     }[tone];
     return (
@@ -1209,7 +1213,7 @@ function InfoCard({ title, icon: Icon, actionText, onAction, children }: { title
 function AvatarChip({ member, compact = false }: { member: HouseMember; compact?: boolean }) {
     return (
         <div className={`flex items-center gap-2 rounded-full bg-[var(--oikos-cream)] ${compact ? "px-2 py-1" : "px-3 py-2"}`}>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--oikos-green)] text-xs font-semibold text-white">{member.avatar}</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--oikos-green)] text-xs font-semibold text-[var(--oikos-on-green)]">{member.avatar}</span>
             <span className="text-sm font-medium">{member.name}</span>
         </div>
     );
@@ -1225,12 +1229,12 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 function EmptyState({ text }: { text: string }) {
-    return <div className="rounded-[24px] border border-dashed border-[rgba(40,0,3,0.15)] bg-[rgba(255,253,249,0.75)] px-5 py-7 text-center text-sm text-[var(--oikos-burgundy)]/70">{text}</div>;
+    return <div className="rounded-[24px] border border-dashed border-[var(--oikos-line)] bg-[var(--oikos-ivory)] px-5 py-7 text-center text-sm text-[var(--oikos-burgundy)]/70">{text}</div>;
 }
 
 function QuickActionRow({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
     return (
-        <button onClick={onClick} className="flex w-full items-center gap-3 rounded-2xl bg-[var(--oikos-cream)] px-4 py-3 text-left transition hover:bg-[rgba(242,208,169,0.7)]">
+        <button onClick={onClick} className="flex w-full items-center gap-3 rounded-2xl bg-[var(--oikos-cream)] px-4 py-3 text-left transition hover:bg-[var(--oikos-yellow)]">
             <Icon size={18} className="text-[var(--oikos-green)]" />
             <span className="flex-1 text-sm font-medium">{label}</span>
             <ArrowRight size={16} className="text-[var(--oikos-burgundy)]/45" />

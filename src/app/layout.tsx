@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { ThemeManager } from "@/components/theme-settings";
+import { themeInitScript } from "@/lib/theme";
 import InstallApp from "@/components/install-app";
 import "./globals.css";
 
@@ -20,8 +22,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pl">
-      <body><InstallApp />{children}</body>
+    <html lang="pl" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeInitScript }} /></head>
+      <body><ThemeManager /><InstallApp />{children}</body>
     </html>
   );
 }
