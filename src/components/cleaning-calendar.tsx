@@ -11,6 +11,7 @@ type Props = {
     onRemoveZone: (id: string) => void;
     onAddZone: () => void; onRenameZone: (id: string, name: string) => void;
     onGenerateSchedule: (weeks?: number) => void; onRebalance: () => void;
+    onToggleCleaningIncluded: (memberId: string) => void;
     onCompleteAssignment: (id: string) => void;
     onOverrideAssignmentMember: (id: string, memberId: string) => void;
 };
@@ -84,8 +85,15 @@ export default function CleaningCalendar(props: Props) {
             </article>) : <div className="empty-state"><CalendarDays size={28} /><h4>Brak dyżurów w tym tygodniu</h4><p>Sprawdź inny tydzień lub wygeneruj grafik w ustawieniach poniżej.</p></div>}</div>
         </section>
         <details className="settings-panel"><summary>Strefy i automatyczna rotacja <span>{state.cleaningZones.length} stref · {props.cleaningParticipants.length} osób</span></summary>
-            <p className="muted mt-3">Grafik rozdziela dyżury między wszystkie osoby włączone do rotacji. Zmiana udziału w zakładce Dom automatycznie wyrównuje grafik od bieżącego tygodnia. Historia, wykonane zadania i ręczne przydziały pozostają bez zmian.</p>
-            <p className="muted mt-3">Gdy osób jest więcej niż stref, domownicy sprzątają na zmianę w kolejnych tygodniach.</p>
+            <fieldset className="mt-4 space-y-2">
+                <legend className="font-semibold">Uczestnicy sprzątania: {props.cleaningParticipants.length} z {state.members.length}</legend>
+                {state.members.map(member => <label key={member.id} className="flex items-center gap-2">
+                    <input type="checkbox" checked={member.includeInCleaning} onChange={() => props.onToggleCleaningIncluded(member.id)} />
+                    <span>{member.name}</span>
+                </label>)}
+            </fieldset>
+            <p className="muted mt-3">Zmiana uczestników automatycznie aktualizuje grafik i zachowuje ręczne przydziały. Przyciski „Generuj grafik” i „Wyrównaj przyszłe” rozdzielają od nowa wszystkie niewykonane dyżury w wybranym okresie od bieżącego tygodnia, także przydziały ręczne. Historia i wykonane zadania pozostają bez zmian.</p>
+            <p className="muted mt-3">Jedna strefa to jedna osoba w tygodniu. Najpierw każdy otrzymuje jedną strefę, potem dzielimy pozostałe. Gdy osób jest więcej niż stref, kolejka przechodzi między wszystkimi uczestnikami w kolejnych tygodniach.</p>
             <form className="zone-form" onSubmit={e => { e.preventDefault(); props.onAddZone(); }}><label>Nowa strefa<input className="input" placeholder="np. Balkon" value={props.zoneName} onChange={e => props.setZoneName(e.target.value)} /></label><button className="btn-primary" disabled={!props.zoneName.trim()}>Dodaj strefę</button></form>
             <div className="zone-list">{state.cleaningZones.map(zone => <div key={`${zone.id}:${zone.name}`}>
                 <div className="flex items-center gap-1">

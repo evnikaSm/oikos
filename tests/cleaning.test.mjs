@@ -75,3 +75,67 @@ test('deleted zones disappear from regenerated pending schedules, including manu
  const next=regenerateSchedule({...demoState,cleaningZones:[],cleaningAssignments:initial},new Date(2026,8,15),4);
  assert.deepEqual(next, [...initial.slice(0,3),initial[3]]);
 });
+
+test('future manual duties cannot leave a participant out of a fully staffed week', () => {
+ const now=new Date(2026,8,14);
+ const initial=buildRotationSchedule({zones:demoState.cleaningZones,members:demoState.members,startWeekDate:now,weeks:8});
+ const fixed=initial.filter(a=>a.weekKey!==formatWeekKey(now)).map(a=>({...a,assignedMemberId:'mark',assignedMemberName:'Mark',manualOverride:true}));
+ const next=regenerateSchedule({...demoState,cleaningAssignments:fixed},now,8);
+ const thisWeek=next.filter(a=>a.weekKey===formatWeekKey(now));
+ assert.equal(thisWeek.length,3);
+ assert.deepEqual(new Set(thisWeek.map(a=>a.assignedMemberId)),new Set(demoState.members.map(m=>m.id)));
+ for(const duty of fixed) assert.deepEqual(next.find(a=>a.id===duty.id),duty);
+});
+
+test('new planning windows continue the rotation instead of restarting with the same people', () => {
+ let state={...demoState,cleaningZones:demoState.cleaningZones.slice(0,1),cleaningAssignments:[]};
+ const assigned=[];
+ for(let week=0;week<6;week++) {
+  const now=new Date(2026,8,14+week*7);
+  state={...state,cleaningAssignments:regenerateSchedule(state,now,1)};
+  const current=state.cleaningAssignments.filter(a=>a.weekKey===formatWeekKey(now));
+  assert.equal(current.length,1);
+  assigned.push(current[0].assignedMemberId);
+ }
+ assert.equal(new Set(assigned.slice(0,3)).size,3);
+ assert.equal(new Set(assigned.slice(3,6)).size,3);
+});
+
+test('explicit redistribution gives four people one of four zones even after manual two-person assignments', () => {
+ const now=new Date(2026,8,14);
+ const members=[...demoState.members,{...demoState.members[0],id:'fourth',name:'Fourth'}];
+ const zones=[...demoState.cleaningZones,{id:'fourth-zone',name:'Fourth zone',order:3}];
+ const initial=buildRotationSchedule({zones,members:members.slice(0,2),startWeekDate:now,weeks:8})
+  .map(a=>({...a,manualOverride:true}));
+ const state={...demoState,members,cleaningZones:zones,cleaningAssignments:initial};
+ const next=regenerateSchedule(state,now,8,true);
+ assert.deepEqual(new Set(next.map(a=>a.id)),new Set(initial.map(a=>a.id)));
+ for(const week of new Set(next.map(a=>a.weekKey))) {
+  const duties=next.filter(a=>a.weekKey===week);
+  assert.equal(duties.length,4);
+  assert.equal(new Set(duties.map(a=>a.zoneId)).size,4);
+  assert.deepEqual(new Set(duties.map(a=>a.assignedMemberId)),new Set(members.map(m=>m.id)));
+ }
+ assert.ok(next.every(a=>!a.manualOverride));
+ assert.deepEqual(regenerateSchedule({...state,cleaningAssignments:next},now,8,true),next);
+});
+
+test('explicit redistribution preserves completed duties and past manual assignments', () => {
+ const start=new Date(2026,8,7), now=new Date(2026,8,14);
+ const initial=buildRotationSchedule({zones:demoState.cleaningZones,members:demoState.members,startWeekDate:start,weeks:4})
+  .map(a=>({...a,manualOverride:true}));
+ initial[3]={...initial[3],status:'completed',completedAt:'2026-09-14T12:00:00Z',completedById:initial[3].assignedMemberId};
+ const next=regenerateSchedule({...demoState,cleaningAssignments:initial},now,4,true);
+ for(const duty of [...initial.slice(0,3),initial[3]]) assert.deepEqual(next.find(a=>a.id===duty.id),duty);
+});
+
+test('extra zones are divided across all participants with weekly workloads differing by at most one', () => {
+ const zones=Array.from({length:7},(_,i)=>({id:`zone-${i}`,name:`Zone ${i}`,order:i}));
+ const next=buildRotationSchedule({zones,members:demoState.members,startWeekDate:new Date(2026,8,14),weeks:8});
+ for(const week of new Set(next.map(a=>a.weekKey))) {
+  const duties=next.filter(a=>a.weekKey===week);
+  const counts=demoState.members.map(m=>duties.filter(a=>a.assignedMemberId===m.id).length);
+  assert.equal(duties.length,7);
+  assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+ }
+});

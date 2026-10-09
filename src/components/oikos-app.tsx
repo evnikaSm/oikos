@@ -324,7 +324,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     };
 
     const generateSchedule = (weeks = Number(scheduleWeeks) || 8) => {
-        updateState(prev => ({ ...prev, cleaningAssignments: regenerateSchedule(prev, new Date(), weeks) }));
+        updateState(prev => ({ ...prev, cleaningAssignments: regenerateSchedule(prev, new Date(), weeks, true) }));
     };
 
     const rebalanceFuture = () => generateSchedule();
@@ -502,6 +502,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                         <CleaningTab
                             state={state}
                             cleaningParticipants={cleaningParticipants}
+                            onToggleCleaningIncluded={toggleCleaningIncluded}
                             onRenameZone={(id, name) => updateState(prev => {
                                 const next = { ...prev, cleaningZones: prev.cleaningZones.map(z => z.id === id ? { ...z, name } : z) };
                                 return { ...next, cleaningAssignments: regenerateSchedule(next, new Date(), Number(scheduleWeeks)) };
@@ -969,6 +970,7 @@ function CleaningTab(props: {
     onRemoveZone: (id: string) => void;
     onGenerateSchedule: (weeks?: number) => void;
     onRebalance: () => void;
+    onToggleCleaningIncluded: (memberId: string) => void;
     onCompleteAssignment: (id: string) => void;
     onOverrideAssignmentMember: (id: string, memberId: string) => void;
 }) {

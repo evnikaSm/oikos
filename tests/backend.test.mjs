@@ -19,6 +19,7 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  await db.exec(await readFile(new URL('../supabase/migrations/202609180003_personal_cleaning.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202609180004_retired_zone_duties.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202610090001_shared_cleaning_rotation.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/202610090002_replan_cleaning_duties.sql',import.meta.url),'utf8'));
  const asUser = async id => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated'); };
  const read = async () => (await db.query('select * from public.oikos_households')).rows;
  const save = async (h,state,rev=h.revision) => db.query('select public.oikos_save_house($1,$2,$3)',[h.id,rev,JSON.stringify(state)]);
@@ -120,6 +121,14 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  Object.assign(state.cleaningAssignments.find(a=>a.id==='automatic'),{assignedMemberId:anna,assignedMemberName:'Anna'});
  await assert.rejects(save(h,state),/OIKOS_OWN_CLEANING_ONLY/);
  await asUser(mark);
+ // Explicit replanning releases a manual current/future duty without replacing its identity.
+ await asUser(anna);
+ state=structuredClone(h.state);
+ Object.assign(state.cleaningAssignments.find(a=>a.id==='automatic'),{assignedMemberId:anna,assignedMemberName:'Anna',manualOverride:false});
+ await save(h,state);[h]=await read();
+ assert.equal(h.state.cleaningAssignments.find(a=>a.id==='automatic').assignedMemberId,anna);
+ assert.equal(h.state.cleaningAssignments.find(a=>a.id==='automatic').manualOverride,false);
+ await asUser(mark);
  // A shared zone can be retired without deleting history or completed evidence.
  const week=(await db.query(`select to_char(clock_timestamp() at time zone 'Europe/Warsaw', 'IYYY-"W"IW') as week`)).rows[0].week;
  state=structuredClone(h.state);
@@ -140,5 +149,43 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  assert.notEqual(h.invite_token,firstInvite);
  await asUser(anna);assert.equal((await read()).length,0);
  await assert.rejects(db.query('select public.oikos_join_house($1,$2)',[firstInvite,'Anna']),/Invalid invitation/);
+ } finally {await db.close();}
+});
+
+test('saved four-person household can redistribute a manual two-person plan into one zone each', async () => {
+ const {buildRotationSchedule,regenerateSchedule}=await import('../src/lib/oikos.ts');
+ const db=new PGlite();
+ const ids=[anna,mark,outsider,'44444444-4444-4444-8444-444444444444'];
+ try {
+  await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key);
+   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+   grant usage on schema auth to authenticated,anon; grant execute on function auth.uid() to authenticated,anon;`);
+  for(const id of ids) await db.query('insert into auth.users values($1)',[id]);
+  // The latest save function can upgrade an installation without intermediate save-function migrations.
+  for(const file of ['202609180001_households.sql','202610090002_replan_cleaning_duties.sql']) {
+   await db.exec(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
+  }
+  const asUser=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');};
+  const read=async()=>(await db.query('select * from public.oikos_households')).rows[0];
+  const save=async(h,state)=>db.query('select public.oikos_save_house($1,$2,$3)',[h.id,h.revision,JSON.stringify(state)]);
+  await asUser(ids[0]);await db.query('select public.oikos_create_house($1,$2)',['Four-person home','Person 1']);
+  let h=await read();
+  for(let i=1;i<ids.length;i++) {await asUser(ids[i]);await db.query('select public.oikos_join_house($1,$2)',[h.invite_token,`Person ${i+1}`]);}
+  h=await read();
+  const now=new Date();
+  let state=structuredClone(h.state);
+  state.cleaningZones=Array.from({length:4},(_,i)=>({id:`zone-${i}`,name:`Zone ${i+1}`,order:i}));
+  state.cleaningAssignments=buildRotationSchedule({zones:state.cleaningZones,members:state.members.slice(0,2),startWeekDate:now,weeks:8})
+   .map(a=>({...a,manualOverride:true}));
+  await save(h,state);h=await read();
+  state={...h.state,activeMemberId:ids[3]};
+  state.cleaningAssignments=regenerateSchedule(state,now,8,true);
+  await save(h,state);h=await read();
+  for(const week of new Set(h.state.cleaningAssignments.map(a=>a.weekKey))) {
+   const duties=h.state.cleaningAssignments.filter(a=>a.weekKey===week);
+   assert.equal(duties.length,4);
+   assert.equal(new Set(duties.map(a=>a.zoneId)).size,4);
+   assert.deepEqual(new Set(duties.map(a=>a.assignedMemberId)),new Set(ids));
+  }
  } finally {await db.close();}
 });

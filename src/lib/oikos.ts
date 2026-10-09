@@ -423,12 +423,19 @@ export function buildRotationSchedule({
     const futureAssignments: CleaningAssignment[] = [];
     const protectedSlots = new Set(existingAssignments.map(a => `${a.weekKey}:${a.zoneId}`));
     const loads = new Map(participating.map(member => [member.id, 0]));
+    const lastDutyWeek = new Map(participating.map(member => [member.id, ""]));
+    const firstWeek = formatWeekKey(startWeekDate);
     const plannedWeeks = new Set(Array.from({ length: weeks }, (_, index) => {
         const date = new Date(startWeekDate);
         date.setDate(date.getDate() + index * 7);
         return formatWeekKey(date);
     }));
     for (const assignment of existingAssignments) {
+        const memberId = assignment.assignedMemberId ?? "";
+        if (assignment.weekKey < firstWeek && lastDutyWeek.has(memberId)
+            && assignment.weekKey > lastDutyWeek.get(memberId)!) {
+            lastDutyWeek.set(memberId, assignment.weekKey);
+        }
         if (plannedWeeks.has(assignment.weekKey) && loads.has(assignment.assignedMemberId ?? "")) {
             const id = assignment.assignedMemberId!;
             loads.set(id, loads.get(id)! + 1);
@@ -442,16 +449,22 @@ export function buildRotationSchedule({
         const weekLabel = `Week ${weekIndex + 1}`;
         const weeklyLoads = new Map(participating.map(member => [member.id,
             existingAssignments.filter(a => a.weekKey === weekKey && a.assignedMemberId === member.id).length]));
+        for (const member of participating) {
+            if (weeklyLoads.get(member.id)! > 0) lastDutyWeek.set(member.id, weekKey);
+        }
 
         sortedZones.forEach((zone, zoneIndex) => {
             if (protectedSlots.has(`${weekKey}:${zone.id}`)) return;
-            // Fill the lightest workloads first; rotate ties so zones change hands.
+            // Give everyone a turn this week before assigning a second zone.
+            // History breaks workload ties so a new planning window continues the queue.
             const member = rotate(participating, (weekIndex + zoneIndex) % participating.length)
-                .sort((a, b) => loads.get(a.id)! - loads.get(b.id)!
-                    || weeklyLoads.get(a.id)! - weeklyLoads.get(b.id)!)[0];
+                .sort((a, b) => weeklyLoads.get(a.id)! - weeklyLoads.get(b.id)!
+                    || loads.get(a.id)! - loads.get(b.id)!
+                    || lastDutyWeek.get(a.id)!.localeCompare(lastDutyWeek.get(b.id)!))[0];
             if (member) {
                 loads.set(member.id, loads.get(member.id)! + 1);
                 weeklyLoads.set(member.id, weeklyLoads.get(member.id)! + 1);
+                lastDutyWeek.set(member.id, weekKey);
             }
             futureAssignments.push({
                 id: createId(`assign_${weekKey}_${zone.id}`),
@@ -499,10 +512,10 @@ export function removeRetiredZoneDuties(state: OikosState, now: Date) {
     return state.cleaningAssignments.filter(assignment => assignment.status !== "pending" || assignment.weekKey < currentWeek || activeZones.has(assignment.zoneId));
 }
 
-export function regenerateSchedule(state: OikosState, now: Date, weeks = 8) {
+export function regenerateSchedule(state: OikosState, now: Date, weeks = 8, resetManualAssignments = false) {
     state = { ...state, cleaningAssignments: removeRetiredZoneDuties(state, now) };
     const currentWeek = formatWeekKey(now);
-    const preserved = state.cleaningAssignments.filter(a => a.weekKey < currentWeek || a.status === "completed" || a.manualOverride);
+    const preserved = state.cleaningAssignments.filter(a => a.weekKey < currentWeek || a.status === "completed" || (a.manualOverride && !resetManualAssignments));
     const generated = buildRotationSchedule({ zones: state.cleaningZones, members: state.members, startWeekDate: now,
         weeks: Math.max(1, Math.min(52, Math.floor(weeks) || 8)), existingAssignments: preserved });
     const generatedSlots = new Set(generated.map(a => `${a.weekKey}:${a.zoneId}`));
@@ -511,7 +524,8 @@ export function regenerateSchedule(state: OikosState, now: Date, weeks = 8) {
     return [...preserved, ...outsideRange, ...generated.map(assignment => {
         const previous = existingSlots.get(`${assignment.weekKey}:${assignment.zoneId}`);
         return previous ? { ...previous, zoneName: assignment.zoneName,
-            assignedMemberId: assignment.assignedMemberId, assignedMemberName: assignment.assignedMemberName } : assignment;
+            assignedMemberId: assignment.assignedMemberId, assignedMemberName: assignment.assignedMemberName,
+            manualOverride: false } : assignment;
     })];
 }
 

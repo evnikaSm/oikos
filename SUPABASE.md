@@ -66,6 +66,20 @@ click **Wyrównaj przyszłe** after applying this migration, selecting the desir
 The planner balances duty counts across all selected people; when there are more
 people than zones, turns are spread across weeks.
 
+### Replanning manually assigned duties
+
+Run `supabase/migrations/202610090002_replan_cleaning_duties.sql` for the latest
+cleaning planner. It replaces the save function and includes migration 001's shared
+rotation fix, so installations already on migration 004 can apply this file directly.
+No saved household data is changed by applying it.
+
+**Generuj grafik** and **Wyrównaj przyszłe** now release pending manual assignments
+in the selected period as well, so an old two-person plan cannot keep all zones
+locked to those two people. Past weeks and completed duties remain unchanged.
+With four enabled participants and four zones, each receives one zone per week.
+With more zones, extra zones are shared; with fewer, the queue rotates across everyone.
+Participant checkboxes are also available directly in the cleaning settings.
+
 ## 3. Login redirect URLs
 
 In **Authentication → URL Configuration**:

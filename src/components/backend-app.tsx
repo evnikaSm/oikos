@@ -84,7 +84,9 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
         try { await action(); }
         catch (err) {
             const message = err && typeof err === "object" && "message" in err ? String(err.message) : "";
-            if (message.includes("OIKOS_OWN_CLEANING_ONLY")) {
+            if (message.includes("OIKOS_SHARED_ROTATION_BLOCKED")) {
+                setError("Baza danych zablokowała ponowne rozdzielenie dyżurów. Nowy grafik nie został zapisany. Obsługa wspólnego grafiku wymaga aktualizacji.");
+            } else if (message.includes("OIKOS_OWN_CLEANING_ONLY")) {
                 setError("Możesz zmieniać i potwierdzać tylko dyżury przypisane do Ciebie. Odśwież grafik i spróbuj ponownie.");
             } else if (message.includes("OIKOS_OWN_CONTRIBUTION_ONLY")) {
                 setError("Możesz zmieniać tylko własną wpłatę. Kwoty pozostałych domowników są tylko do odczytu.");
@@ -103,7 +105,18 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
             void _actor;
             shared.house = record.state.house;
             const { error } = await client.rpc("oikos_save_house", { house_id: record.id, expected_revision: record.revision, next_state: shared });
-            if (error) throw error;
+            if (error) {
+                const replannedAnotherMember = next.cleaningAssignments.some(assignment => {
+                    const previous = record.state.cleaningAssignments.find(a => a.id === assignment.id);
+                    return previous?.status === "pending" && previous.assignedMemberId !== userId
+                        && assignment.status === "pending" && !assignment.manualOverride
+                        && (previous.assignedMemberId !== assignment.assignedMemberId || previous.manualOverride);
+                });
+                if (error.message.includes("OIKOS_OWN_CLEANING_ONLY") && replannedAnotherMember) {
+                    throw new Error("OIKOS_SHARED_ROTATION_BLOCKED");
+                }
+                throw error;
+            }
             await refresh(); setNotice("Zapisano");
         });
     };
