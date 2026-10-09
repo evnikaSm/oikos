@@ -33,7 +33,7 @@ Next run `supabase/migrations/202609180003_personal_cleaning.sql` in SQL Editor.
 For an existing installation with personal contributions already enabled, run only
 this new migration. It preserves existing data and contribution restrictions.
 
-Only the assigned member can edit a pending duty or mark it complete. Other members
+At this migration level, only the assigned member can edit a pending duty or mark it complete. Other members
 can see the assignment and its completion time. Completed duties remain immutable.
 Schedule generation preserves other people's existing duties while filling new
 weeks/zones; it can update the current person's pending automatic assignments.
@@ -51,6 +51,20 @@ The database uses Europe/Warsaw for the current ISO week.
 For zones deleted before this fix, click **Generuj grafik** once after applying the
 migration. Regeneration also removes obsolete pending duties beyond the selected
 planning period, so they cannot reappear in a later month.
+
+### Shared cleaning rotation fix
+
+Run `supabase/migrations/202610090001_shared_cleaning_rotation.sql` after migration 004.
+It allows automatic pending duties from the current week onward to be redistributed
+among participating household members. Assignment IDs and week/zone slots are retained;
+history, manual assignments and completed duties remain protected. Completion still
+requires the assigned member and uses the database timestamp.
+
+Changing participation in **Dom** now rebalances the existing planning horizon.
+For a previously generated schedule that includes only some selected members,
+click **Wyrównaj przyszłe** after applying this migration, selecting the desired period.
+The planner balances duty counts across all selected people; when there are more
+people than zones, turns are spread across weeks.
 
 ## 3. Login redirect URLs
 

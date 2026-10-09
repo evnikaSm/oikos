@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
     regenerateSchedule,
+    toggleCleaningParticipation,
     removeRetiredZoneDuties,
     createId,
     demoNow,
@@ -310,12 +311,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     };
 
     const toggleCleaningIncluded = (memberId: string) => {
-        updateState((prev) => ({
-            ...prev,
-            members: prev.members.map((member) =>
-                member.id === memberId ? { ...member, includeInCleaning: !member.includeInCleaning } : member,
-            ),
-        }));
+        updateState(prev => toggleCleaningParticipation(prev, memberId, new Date(), Number(scheduleWeeks)));
     };
 
     const addCleaningZone = () => {

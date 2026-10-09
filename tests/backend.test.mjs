@@ -18,6 +18,7 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  await db.exec(await readFile(new URL('../supabase/migrations/202609180002_personal_contributions.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202609180003_personal_cleaning.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202609180004_retired_zone_duties.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/202610090001_shared_cleaning_rotation.sql',import.meta.url),'utf8'));
  const asUser = async id => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated'); };
  const read = async () => (await db.query('select * from public.oikos_households')).rows;
  const save = async (h,state,rev=h.revision) => db.query('select public.oikos_save_house($1,$2,$3)',[h.id,rev,JSON.stringify(state)]);
@@ -83,6 +84,42 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  await assert.rejects(save(h,state),/Completed duties must be preserved/);
  state=structuredClone(h.state);state.members[0].id=outsider;
  await assert.rejects(save(h,state),/Invalid membership change/);
+ // Automatic current/future duties can be redistributed by another household member.
+ const currentWeek=(await db.query(`select to_char(clock_timestamp() at time zone 'Europe/Warsaw', 'IYYY-"W"IW') as week`)).rows[0].week;
+ state=structuredClone(h.state);
+ state.cleaningAssignments.push({...state.cleaningAssignments[0],id:'automatic',weekKey:currentWeek,status:'pending',manualOverride:false,completedAt:null,completedById:null});
+ await save(h,state);[h]=await read();
+ for (const modify of [
+  a=>{a.id='replacement';},
+  a=>{a.status='completed';},
+  a=>{a.manualOverride=true;},
+  a=>{a.completedById=mark;},
+  a=>{a.assignedMemberId=outsider;a.assignedMemberName='Outsider';},
+  a=>{a.zoneName='Forged';},
+ ]) {
+  const forged=structuredClone(h.state);modify(forged.cleaningAssignments.find(a=>a.id==='automatic'));
+  await assert.rejects(save(h,forged),/OIKOS_OWN_CLEANING_ONLY/);
+ }
+ const optedOut=structuredClone(h.state);
+ optedOut.members.find(m=>m.id===mark).includeInCleaning=false;
+ Object.assign(optedOut.cleaningAssignments.find(a=>a.id==='automatic'),{assignedMemberId:mark,assignedMemberName:'Mark'});
+ await assert.rejects(save(h,optedOut),/OIKOS_OWN_CLEANING_ONLY/);
+ state=structuredClone(h.state);
+ Object.assign(state.cleaningAssignments.find(a=>a.id==='automatic'),{assignedMemberId:mark,assignedMemberName:'Mark'});
+ await save(h,state);[h]=await read();
+ assert.equal(h.state.cleaningAssignments.find(a=>a.id==='automatic').assignedMemberId,mark);
+ // Completion still requires the assignee; manual overrides stay protected.
+ await asUser(anna);
+ state=structuredClone(h.state);state.cleaningAssignments.find(a=>a.id==='automatic').status='completed';
+ await assert.rejects(save(h,state),/OIKOS_OWN_CLEANING_ONLY/);
+ await asUser(mark);
+ state=structuredClone(h.state);state.cleaningAssignments.find(a=>a.id==='automatic').manualOverride=true;
+ await save(h,state);[h]=await read();
+ await asUser(anna);
+ state=structuredClone(h.state);
+ Object.assign(state.cleaningAssignments.find(a=>a.id==='automatic'),{assignedMemberId:anna,assignedMemberName:'Anna'});
+ await assert.rejects(save(h,state),/OIKOS_OWN_CLEANING_ONLY/);
+ await asUser(mark);
  // A shared zone can be retired without deleting history or completed evidence.
  const week=(await db.query(`select to_char(clock_timestamp() at time zone 'Europe/Warsaw', 'IYYY-"W"IW') as week`)).rows[0].week;
  state=structuredClone(h.state);

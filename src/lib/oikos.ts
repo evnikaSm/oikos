@@ -417,21 +417,42 @@ export function buildRotationSchedule({
     existingAssignments?: CleaningAssignment[];
 }) {
     const participating = members.filter((member) => member.includeInCleaning);
-    if (!participating.length || !zones.length) return [] as CleaningAssignment[];
+    if (!zones.length) return [] as CleaningAssignment[];
 
     const sortedZones = [...zones].sort((a, b) => a.order - b.order);
     const futureAssignments: CleaningAssignment[] = [];
-    const offset = existingAssignments.length % participating.length;
+    const protectedSlots = new Set(existingAssignments.map(a => `${a.weekKey}:${a.zoneId}`));
+    const loads = new Map(participating.map(member => [member.id, 0]));
+    const plannedWeeks = new Set(Array.from({ length: weeks }, (_, index) => {
+        const date = new Date(startWeekDate);
+        date.setDate(date.getDate() + index * 7);
+        return formatWeekKey(date);
+    }));
+    for (const assignment of existingAssignments) {
+        if (plannedWeeks.has(assignment.weekKey) && loads.has(assignment.assignedMemberId ?? "")) {
+            const id = assignment.assignedMemberId!;
+            loads.set(id, loads.get(id)! + 1);
+        }
+    }
 
     for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
         const weekDate = new Date(startWeekDate);
         weekDate.setDate(startWeekDate.getDate() + weekIndex * 7);
         const weekKey = formatWeekKey(weekDate);
         const weekLabel = `Week ${weekIndex + 1}`;
-        const rotation = rotate(participating, (weekIndex + offset) % participating.length);
+        const weeklyLoads = new Map(participating.map(member => [member.id,
+            existingAssignments.filter(a => a.weekKey === weekKey && a.assignedMemberId === member.id).length]));
 
         sortedZones.forEach((zone, zoneIndex) => {
-            const member = rotation[zoneIndex % rotation.length];
+            if (protectedSlots.has(`${weekKey}:${zone.id}`)) return;
+            // Fill the lightest workloads first; rotate ties so zones change hands.
+            const member = rotate(participating, (weekIndex + zoneIndex) % participating.length)
+                .sort((a, b) => loads.get(a.id)! - loads.get(b.id)!
+                    || weeklyLoads.get(a.id)! - weeklyLoads.get(b.id)!)[0];
+            if (member) {
+                loads.set(member.id, loads.get(member.id)! + 1);
+                weeklyLoads.set(member.id, weeklyLoads.get(member.id)! + 1);
+            }
             futureAssignments.push({
                 id: createId(`assign_${weekKey}_${zone.id}`),
                 weekKey,
@@ -452,8 +473,23 @@ export function buildRotationSchedule({
 }
 
 function rotate<T>(items: T[], amount: number) {
+    if (!items.length) return [];
     const normalized = amount % items.length;
     return [...items.slice(normalized), ...items.slice(0, normalized)];
+}
+
+/** Apply participation changes to the whole existing planning horizon. */
+export function toggleCleaningParticipation(state: OikosState, memberId: string, now: Date, weeks = 8): OikosState {
+    const next = { ...state, members: state.members.map(member => member.id === memberId
+        ? { ...member, includeInCleaning: !member.includeInCleaning } : member) };
+    const lastWeek = state.cleaningAssignments.reduce((last, a) => a.weekKey > last ? a.weekKey : last, formatWeekKey(now));
+    for (let index = weeks; index < 52; index += 1) {
+        const date = new Date(now);
+        date.setDate(date.getDate() + index * 7);
+        if (formatWeekKey(date) > lastWeek) break;
+        weeks = index + 1;
+    }
+    return { ...next, cleaningAssignments: regenerateSchedule(next, now, weeks) };
 }
 
 /** Regenerate pending duties without losing history, completions or manual choices. */
@@ -466,13 +502,17 @@ export function removeRetiredZoneDuties(state: OikosState, now: Date) {
 export function regenerateSchedule(state: OikosState, now: Date, weeks = 8) {
     state = { ...state, cleaningAssignments: removeRetiredZoneDuties(state, now) };
     const currentWeek = formatWeekKey(now);
-    const preserved = state.cleaningAssignments.filter(a => a.weekKey < currentWeek || a.status === "completed" || a.manualOverride || (a.assignedMemberId !== null && a.assignedMemberId !== state.activeMemberId));
-    const protectedSlots = new Set(preserved.map(a => `${a.weekKey}:${a.zoneId}`));
+    const preserved = state.cleaningAssignments.filter(a => a.weekKey < currentWeek || a.status === "completed" || a.manualOverride);
     const generated = buildRotationSchedule({ zones: state.cleaningZones, members: state.members, startWeekDate: now,
         weeks: Math.max(1, Math.min(52, Math.floor(weeks) || 8)), existingAssignments: preserved });
     const generatedSlots = new Set(generated.map(a => `${a.weekKey}:${a.zoneId}`));
     const outsideRange = state.cleaningAssignments.filter(a => !preserved.includes(a) && !generatedSlots.has(`${a.weekKey}:${a.zoneId}`));
-    return [...preserved, ...outsideRange, ...generated.filter(a => !protectedSlots.has(`${a.weekKey}:${a.zoneId}`))];
+    const existingSlots = new Map(state.cleaningAssignments.map(a => [`${a.weekKey}:${a.zoneId}`, a]));
+    return [...preserved, ...outsideRange, ...generated.map(assignment => {
+        const previous = existingSlots.get(`${assignment.weekKey}:${assignment.zoneId}`);
+        return previous ? { ...previous, zoneName: assignment.zoneName,
+            assignedMemberId: assignment.assignedMemberId, assignedMemberName: assignment.assignedMemberName } : assignment;
+    })];
 }
 
 export function monthDays(month: Date) {
