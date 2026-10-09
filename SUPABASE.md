@@ -80,6 +80,28 @@ With four enabled participants and four zones, each receives one zone per week.
 With more zones, extra zones are shared; with fewer, the queue rotates across everyone.
 Participant checkboxes are also available directly in the cleaning settings.
 
+### Undoing your cleaning completion
+
+Run `supabase/migrations/202610090003_undo_cleaning_completion.sql` in SQL Editor.
+It replaces the save function, includes the preceding save-function fixes, and
+preserves saved data. Click your checked cleaning checkbox again to reopen the
+duty. Only the person who confirmed it can undo it; completion time and author
+are cleared. Confirming it again records a new database timestamp. Undoing a
+current/future duty for an already deleted zone cancels that obsolete duty.
+
+### Deleting your expenses and entering decimal amounts
+
+Run `supabase/migrations/202610090004_personal_expenses.sql` in SQL Editor.
+It includes all preceding save-function fixes, including cleaning completion undo,
+so an existing installation can apply this file directly. Saved data is preserved.
+Only the expense's purchaser can delete or change it; new expenses use the signed-in
+member as purchaser. Amounts must be positive and have at most two decimal places.
+
+In **Budżet → Historia zakupów**, **Usuń** removes your expense from the budget.
+All expenses are shown, including older entries. Purchased-item and shopping-trip
+history is retained. Add the expense again if its amount was wrong. Manual expenses,
+trip totals and estimated prices accept either `7,80` or `7.80`.
+
 ## 3. Login redirect URLs
 
 In **Authentication → URL Configuration**:
@@ -165,7 +187,7 @@ a real household. Without credentials, a setup screen offers the local demo.
 - `npx tsc --noEmit`
 - `npm test`: runs rotation tests and the actual SQL migration in an isolated
   PostgreSQL engine, testing access isolation, denied direct writes, invitations,
-  revision conflicts, server timestamps, immutable completions and member removal.
+  revision conflicts, server timestamps, protected completions and owner-only undo and member removal.
 - `npm run build -- --webpack` (available fallback for restricted Turbopack workers)
 
 Live Google consent and your hosted Supabase configuration must additionally be

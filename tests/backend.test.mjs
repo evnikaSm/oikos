@@ -20,6 +20,8 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  await db.exec(await readFile(new URL('../supabase/migrations/202609180004_retired_zone_duties.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202610090001_shared_cleaning_rotation.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/202610090002_replan_cleaning_duties.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/202610090003_undo_cleaning_completion.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/202610090004_personal_expenses.sql',import.meta.url),'utf8'));
  const asUser = async id => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated'); };
  const read = async () => (await db.query('select * from public.oikos_households')).rows;
  const save = async (h,state,rev=h.revision) => db.query('select public.oikos_save_house($1,$2,$3)',[h.id,rev,JSON.stringify(state)]);
@@ -55,7 +57,9 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  state.cleaningZones=[{id:'k',name:'Kuchnia',order:0}];
  state.cleaningAssignments=[{id:'a',weekKey:'2026-W38',weekLabel:'Week 1',zoneId:'k',zoneName:'Kuchnia',assignedMemberId:anna,assignedMemberName:'Anna',status:'pending',completedAt:null,completedById:null,manualOverride:false}];
  state.groceryExpenses=[{id:'expense',purchaserId:anna,amount:20,note:'Chleb',createdAt:new Date().toISOString(),type:'manual',tripId:null}];
+ await asUser(anna);
  await save(h,state);
+ await asUser(mark);
  await assert.rejects(save(h,state),/OIKOS_CONFLICT/);
  [h]=await read();state=structuredClone(h.state);
  state.cleaningAssignments[0].status='completed';state.cleaningAssignments[0].completedAt='2000-01-01';state.cleaningAssignments[0].completedById=outsider;
@@ -82,7 +86,33 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  await asUser(mark);
  assert.ok(Math.abs(Date.now()-Date.parse(h.state.cleaningAssignments[0].completedAt))<10000);
  state=structuredClone(h.state);state.cleaningAssignments=[];
- await assert.rejects(save(h,state),/Completed duties must be preserved/);
+ await assert.rejects(save(h,state),/OIKOS_OWN_CLEANING_ONLY/);
+ // A forged browser identity cannot undo someone else's completion.
+ const undo=structuredClone(h.state);undo.activeMemberId=anna;
+ Object.assign(undo.cleaningAssignments[0],{status:'pending',completedAt:null,completedById:null});
+ await assert.rejects(save(h,undo),/OIKOS_OWN_CLEANING_ONLY/);
+ await asUser(anna);
+ for(const modify of [
+  a=>{a.assignedMemberId=mark;},
+  a=>{a.id='replacement';},
+  a=>{a.weekKey='2020-W01';},
+  a=>{a.completedAt='2000-01-01';},
+  a=>{a.completedById=anna;},
+  a=>{a.manualOverride=false;},
+ ]) {
+  const forged=structuredClone(undo);modify(forged.cleaningAssignments[0]);
+  await assert.rejects(save(h,forged),/Completed duties must be preserved/);
+ }
+ const beforeUndo=structuredClone(h);
+ await save(h,undo);[h]=await read();
+ assert.deepEqual(h.state.cleaningAssignments[0],undo.cleaningAssignments[0]);
+ await assert.rejects(save(beforeUndo,undo),/OIKOS_CONFLICT/);
+ state=structuredClone(h.state);
+ Object.assign(state.cleaningAssignments[0],{status:'completed',completedAt:'2000-01-01',completedById:mark});
+ await save(h,state);[h]=await read();
+ assert.equal(h.state.cleaningAssignments[0].completedById,anna);
+ assert.ok(Math.abs(Date.now()-Date.parse(h.state.cleaningAssignments[0].completedAt))<10000);
+ await asUser(mark);
  state=structuredClone(h.state);state.members[0].id=outsider;
  await assert.rejects(save(h,state),/Invalid membership change/);
  // Automatic current/future duties can be redistributed by another household member.
@@ -162,7 +192,7 @@ test('saved four-person household can redistribute a manual two-person plan into
    grant usage on schema auth to authenticated,anon; grant execute on function auth.uid() to authenticated,anon;`);
   for(const id of ids) await db.query('insert into auth.users values($1)',[id]);
   // The latest save function can upgrade an installation without intermediate save-function migrations.
-  for(const file of ['202609180001_households.sql','202610090002_replan_cleaning_duties.sql']) {
+  for(const file of ['202609180001_households.sql','202610090004_personal_expenses.sql']) {
    await db.exec(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
   }
   const asUser=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');};
@@ -187,5 +217,54 @@ test('saved four-person household can redistribute a manual two-person plan into
    assert.equal(new Set(duties.map(a=>a.zoneId)).size,4);
    assert.deepEqual(new Set(duties.map(a=>a.assignedMemberId)),new Set(ids));
   }
+ } finally {await db.close();}
+});
+
+
+test('expenses: decimal amounts persist and only their owner may delete or change them', async () => {
+ const db=new PGlite();
+ try {
+  await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key);
+   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+   grant usage on schema auth to authenticated,anon; grant execute on function auth.uid() to authenticated,anon;`);
+  for(const id of [anna,mark]) await db.query('insert into auth.users values($1)',[id]);
+  for(const file of ['202609180001_households.sql','202610090004_personal_expenses.sql'])
+   await db.exec(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
+  const asUser=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');};
+  const read=async()=>(await db.query('select * from public.oikos_households')).rows[0];
+  const save=async(h,state)=>db.query('select public.oikos_save_house($1,$2,$3)',[h.id,h.revision,JSON.stringify(state)]);
+  await asUser(anna);await db.query('select public.oikos_create_house($1,$2)',['Expenses','Anna']);
+  let h=await read();
+  await asUser(mark);await db.query('select public.oikos_join_house($1,$2)',[h.invite_token,'Mark']);
+  await asUser(anna);h=await read();
+  let state=structuredClone(h.state);
+  state.groceryExpenses=[{id:'manual',amount:7.80,note:'Chleb',purchaserId:anna,createdAt:new Date().toISOString(),type:'manual',tripId:null},
+   {id:'trip-expense',amount:42.75,note:'Sklep',purchaserId:anna,createdAt:new Date().toISOString(),type:'trip',tripId:'trip'}];
+  await save(h,state);h=await read();
+  assert.deepEqual(h.state.groceryExpenses.map(e=>e.amount),[7.8,42.75]);
+  await asUser(mark);
+  for(const modify of [
+   s=>{s.groceryExpenses=[];},
+   s=>{s.groceryExpenses[0].amount=1;},
+   s=>{s.groceryExpenses[0].purchaserId=mark;},
+   s=>{s.groceryExpenses[0].id='replacement';},
+   s=>{s.groceryExpenses.push({...s.groceryExpenses[0],id:'forged'});},
+  ]) {
+   const forged=structuredClone(h.state);forged.activeMemberId=anna;modify(forged);
+   await assert.rejects(save(h,forged),/OIKOS_OWN_EXPENSE_ONLY/);
+  }
+  await asUser(anna);
+  for(const amount of [0,-1,1.234,'7,80',null]) {
+   const invalid=structuredClone(h.state);invalid.groceryExpenses[0].amount=amount;
+   await assert.rejects(save(h,invalid),/Invalid expense amount/);
+  }
+  const stale=structuredClone(h);
+  state=structuredClone(h.state);state.groceryExpenses=state.groceryExpenses.filter(e=>e.id!=='manual');
+  await save(h,state);h=await read();
+  assert.deepEqual(h.state.groceryExpenses.map(e=>e.id),['trip-expense']);
+  await assert.rejects(save(stale,state),/OIKOS_CONFLICT/);
+  state=structuredClone(h.state);state.groceryExpenses=[];
+  await save(h,state);h=await read();
+  assert.deepEqual(h.state.groceryExpenses,[]);
  } finally {await db.close();}
 });

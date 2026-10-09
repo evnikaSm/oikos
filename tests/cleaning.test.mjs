@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { demoState, buildRotationSchedule, regenerateSchedule, formatWeekKey, monthDays, toggleCleaningParticipation } from '../src/lib/oikos.ts';
+import { demoState, buildRotationSchedule, regenerateSchedule, formatWeekKey, monthDays, toggleCleaningParticipation, setCleaningCompletion, canChangeCleaningCompletion } from '../src/lib/oikos.ts';
 test('rotation covers every zone and rotates participants', () => {
  const result = buildRotationSchedule({ zones: demoState.cleaningZones, members: demoState.members, startWeekDate: new Date(2026,8,14), weeks: 4 });
  assert.equal(result.length, 12);
@@ -138,4 +138,24 @@ test('extra zones are divided across all participants with weekly workloads diff
   assert.equal(duties.length,7);
   assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
  }
+});
+
+
+test('own completion can be cleared and confirmed again without changing the duty', () => {
+ const initial=buildRotationSchedule({zones:demoState.cleaningZones,members:demoState.members,startWeekDate:new Date(2026,8,14),weeks:1});
+ const duty=initial[0];
+ const state={...demoState,activeMemberId:duty.assignedMemberId,cleaningAssignments:initial};
+ const done=setCleaningCompletion(state,duty.id,true,new Date('2026-09-14T12:00:00Z'));
+ assert.equal(done.cleaningAssignments[0].completedById,state.activeMemberId);
+ assert.equal(canChangeCleaningCompletion(done.cleaningAssignments[0],state.activeMemberId),true);
+ const undone=setCleaningCompletion(done,duty.id,false);
+ assert.deepEqual(undone,state);
+ const redone=setCleaningCompletion(undone,duty.id,true,new Date('2026-09-14T13:00:00Z'));
+ assert.equal(redone.cleaningAssignments[0].completedAt,'2026-09-14T13:00:00.000Z');
+ assert.deepEqual(setCleaningCompletion(redone,duty.id,true),redone);
+ const other={...done,activeMemberId:'someone-else'};
+ assert.equal(canChangeCleaningCompletion(done.cleaningAssignments[0],other.activeMemberId),false);
+ assert.deepEqual(setCleaningCompletion(other,duty.id,false),other);
+ const pendingOther={...state,activeMemberId:'someone-else'};
+ assert.deepEqual(setCleaningCompletion(pendingOther,duty.id,true),pendingOther);
 });

@@ -388,7 +388,12 @@ export function getShoppingEstimate(items: ShoppingItem[]) {
 }
 
 export function getMonthlySpent(expenses: GroceryExpense[]) {
-    return expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    return expenses.reduce((sum, expense) => sum + Math.round(expense.amount * 100), 0) / 100;
+}
+
+export function removeOwnExpense(state: OikosState, expenseId: string): OikosState {
+    return { ...state, groceryExpenses: state.groceryExpenses.filter(expense =>
+        expense.id !== expenseId || expense.purchaserId !== state.activeMemberId) };
 }
 
 export function getMonthlyContributed(members: HouseMember[]) {
@@ -489,6 +494,20 @@ function rotate<T>(items: T[], amount: number) {
     if (!items.length) return [];
     const normalized = amount % items.length;
     return [...items.slice(normalized), ...items.slice(0, normalized)];
+}
+
+export function canChangeCleaningCompletion(assignment: CleaningAssignment, memberId: string) {
+    return (assignment.status === "completed" ? assignment.completedById : assignment.assignedMemberId) === memberId;
+}
+
+export function setCleaningCompletion(state: OikosState, assignmentId: string, completed: boolean, now = new Date()): OikosState {
+    return { ...state, cleaningAssignments: state.cleaningAssignments.map(assignment => {
+        if (assignment.id !== assignmentId || !canChangeCleaningCompletion(assignment, state.activeMemberId)
+            || (assignment.status === "completed") === completed) return assignment;
+        return { ...assignment, status: completed ? "completed" : "pending",
+            completedAt: completed ? now.toISOString() : null,
+            completedById: completed ? state.activeMemberId : null };
+    }) };
 }
 
 /** Apply participation changes to the whole existing planning horizon. */

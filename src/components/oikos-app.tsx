@@ -23,6 +23,7 @@ import {
 import {
     regenerateSchedule,
     toggleCleaningParticipation,
+    setCleaningCompletion,
     removeRetiredZoneDuties,
     createId,
     demoNow,
@@ -35,6 +36,7 @@ import {
     getMemberName,
     getMonthlyContributed,
     parseMoneyAmount,
+    removeOwnExpense,
     getMonthlySpent,
     getOutstandingContributors,
     getPurchasedShoppingItems,
@@ -94,6 +96,8 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     const [tripStore, setTripStore] = useState("");
     const [manualAmount, setManualAmount] = useState("");
     const [manualNote, setManualNote] = useState("");
+    const [expenseError, setExpenseError] = useState("");
+    const [itemPriceError, setItemPriceError] = useState("");
 
     const [budgetAmount, setBudgetAmount] = useState(String(state.monthlyBudget.budgetAmount));
     const budgetCurrency = "PLN";
@@ -164,7 +168,11 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
 
     const addShoppingItem = () => {
         if (!itemName.trim()) return;
-        const price = itemPrice.trim() ? Number(itemPrice) : null;
+        const price = itemPrice.trim() ? parseMoneyAmount(itemPrice) : null;
+        if (itemPrice.trim() && price === null) {
+            setItemPriceError("Podaj poprawną cenę, np. 7,80 (maksymalnie dwa miejsca po przecinku)."); return;
+        }
+        setItemPriceError("");
         updateState((prev) => {
             const now = new Date().toISOString();
             return {
@@ -230,9 +238,15 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     };
 
     const finishTrip = () => {
-        const amount = Number(prompt("Total amount paid"));
-        if (!Number.isFinite(amount) || amount <= 0 || !activeTrip) return;
-        const storeName = prompt("Optional store name", activeTrip.storeName) ?? activeTrip.storeName;
+        if (!activeTrip) return;
+        const input = prompt("Zapłacona kwota (np. 42,75)");
+        if (input === null) return;
+        const amount = parseMoneyAmount(input);
+        if (amount === null || amount <= 0) {
+            setStorageError("Podaj kwotę większą od zera, z maksymalnie dwoma miejscami po przecinku, np. 42,75."); return;
+        }
+        setStorageError("");
+        const storeName = prompt("Nazwa sklepu (opcjonalnie)", activeTrip.storeName) ?? activeTrip.storeName;
         updateState((prev) => {
             const now = new Date().toISOString();
             const purchasedIds = prev.shoppingItems.filter((item) => item.state === "active" && item.checked).map((item) => item.id);
@@ -272,8 +286,11 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     };
 
     const addManualExpense = () => {
-        const amount = Number(manualAmount);
-        if (!Number.isFinite(amount) || amount <= 0) return;
+        const amount = parseMoneyAmount(manualAmount);
+        if (amount === null || amount <= 0) {
+            setExpenseError("Podaj kwotę większą od zera, z maksymalnie dwoma miejscami po przecinku, np. 7,80."); return;
+        }
+        setExpenseError("");
         updateState((prev) => ({
             ...prev,
             groceryExpenses: [
@@ -329,20 +346,8 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
 
     const rebalanceFuture = () => generateSchedule();
 
-    const completeAssignment = (assignmentId: string) => {
-        updateState((prev) => ({
-            ...prev,
-            cleaningAssignments: prev.cleaningAssignments.map((assignment) =>
-                assignment.id === assignmentId && assignment.status !== "completed" && assignment.assignedMemberId === prev.activeMemberId
-                    ? {
-                        ...assignment,
-                        status: "completed",
-                        completedAt: new Date().toISOString(),
-                        completedById: prev.activeMemberId,
-                    }
-                    : assignment,
-            ),
-        }));
+    const setAssignmentCompleted = (assignmentId: string, completed: boolean) => {
+        updateState(prev => setCleaningCompletion(prev, assignmentId, completed));
     };
 
     const overrideAssignmentMember = (assignmentId: string, memberId: string) => {
@@ -447,6 +452,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                             budgetCurrency={budgetCurrency}
                             setBudgetAmount={setBudgetAmount}
                             onSaveBudget={saveBudgetSettings}
+                            onRemoveExpense={id => updateState(prev => removeOwnExpense(prev, id))}
                             onSaveContribution={saveContribution}
                             onToggleContribution={toggleContributionPaid}
                             onOpenSheet={setSheetMode}
@@ -518,7 +524,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                             })}
                             onGenerateSchedule={generateSchedule}
                             onRebalance={rebalanceFuture}
-                            onCompleteAssignment={completeAssignment}
+                            onSetAssignmentCompleted={setAssignmentCompleted}
                             onOverrideAssignmentMember={overrideAssignmentMember}
                         />
                     )}
@@ -572,12 +578,13 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                                 <Field label="Szacowana cena">
                                     <input
                                         value={itemPrice}
-                                        onChange={(event) => setItemPrice(event.target.value)}
+                                        onChange={(event) => { setItemPrice(event.target.value); setItemPriceError(""); }}
                                         className="input"
                                         placeholder={state.priceMemory[itemName.trim()] ? formatCurrency(state.priceMemory[itemName.trim()], state.monthlyBudget.currency) : "Opcjonalnie"}
                                         inputMode="decimal"
                                     />
                                 </Field>
+                                {itemPriceError && <p role="alert" className="notice">{itemPriceError}</p>}
                                 <ActionRow>
                                     <button className="btn-primary" onClick={addShoppingItem}>Dodaj produkt</button>
                                     <button className="btn-secondary" onClick={() => setSheetMode(null)}>{t.cancel}</button>
@@ -607,8 +614,9 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                         <SheetCard title="Dodaj ręczny wydatek" icon={CreditCard}>
                             <div className="space-y-3">
                                 <Field label="Kwota">
-                                    <input value={manualAmount} onChange={(event) => setManualAmount(event.target.value)} className="input" placeholder="7,80" inputMode="decimal" />
+                                    <input value={manualAmount} onChange={(event) => { setManualAmount(event.target.value); setExpenseError(""); }} className="input" placeholder="7,80" inputMode="decimal" aria-invalid={Boolean(expenseError)} aria-describedby={expenseError ? "expense-amount-error" : undefined} />
                                 </Field>
+                                {expenseError && <p id="expense-amount-error" role="alert" className="notice">{expenseError}</p>}
                                 <Field label="Notatka">
                                     <input value={manualNote} onChange={(event) => setManualNote(event.target.value)} className="input" placeholder="Chleb i mleko" />
                                 </Field>
@@ -771,6 +779,7 @@ function BudgetTab({
     budgetCurrency,
     setBudgetAmount,
     onSaveBudget,
+    onRemoveExpense,
     onSaveContribution,
     onToggleContribution,
     onOpenSheet,
@@ -784,6 +793,7 @@ function BudgetTab({
     budgetCurrency: string;
     setBudgetAmount: (value: string) => void;
     onSaveBudget: () => void;
+    onRemoveExpense: (id: string) => void;
     onSaveContribution: (id: string, amount: number) => void;
     onToggleContribution: (memberId: string) => void;
     onOpenSheet: (mode: SheetMode) => void;
@@ -852,15 +862,19 @@ function BudgetTab({
                     <button className="btn-secondary text-sm" onClick={() => onOpenSheet("manual-expense")}>Dodaj wydatek</button>
                 </div>
                 <div className="mt-4 space-y-3">
-                    {state.groceryExpenses.slice(0, 4).map((expense) => (
-                        <div key={expense.id} className="flex items-center justify-between rounded-2xl bg-[var(--oikos-cream)] px-4 py-3">
+                    {state.groceryExpenses.map((expense) => (
+                        <div key={expense.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[var(--oikos-cream)] px-4 py-3">
                             <div>
                                 <p className="font-medium">{formatCurrency(expense.amount, state.monthlyBudget.currency)}</p>
                                 <p className="text-sm text-[var(--oikos-burgundy)]/70">{expense.note || expense.type}</p>
                             </div>
-                            <p className="text-sm text-[var(--oikos-green)]">{getMemberName(state.members, expense.purchaserId, state.formerMembers)}</p>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <p className="text-sm text-[var(--oikos-green)]">{getMemberName(state.members, expense.purchaserId, state.formerMembers)}</p>
+                                {expense.purchaserId === state.activeMemberId && <button type="button" className="text-button" aria-label={`Usuń wydatek: ${expense.note || formatCurrency(expense.amount, state.monthlyBudget.currency)}`} onClick={() => onRemoveExpense(expense.id)}>Usuń</button>}
+                            </div>
                         </div>
                     ))}
+                    {!state.groceryExpenses.length && <EmptyState text="Brak zapisanych wydatków." />}
                 </div>
             </section>
         </div>
@@ -971,7 +985,7 @@ function CleaningTab(props: {
     onGenerateSchedule: (weeks?: number) => void;
     onRebalance: () => void;
     onToggleCleaningIncluded: (memberId: string) => void;
-    onCompleteAssignment: (id: string) => void;
+    onSetAssignmentCompleted: (id: string, completed: boolean) => void;
     onOverrideAssignmentMember: (id: string, memberId: string) => void;
 }) {
     return <CleaningCalendar {...props} />;

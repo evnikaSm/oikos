@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Check, CalendarDays, X } from "lucide-react";
-import { formatLongDay, formatMonthKey, formatWeekKey, getMemberName, monthDays, type HouseMember, type OikosState } from "@/lib/oikos";
+import { canChangeCleaningCompletion, formatLongDay, formatMonthKey, formatWeekKey, getMemberName, monthDays, type HouseMember, type OikosState } from "@/lib/oikos";
 
 type Props = {
     state: OikosState; cleaningParticipants: HouseMember[];
@@ -12,7 +12,7 @@ type Props = {
     onAddZone: () => void; onRenameZone: (id: string, name: string) => void;
     onGenerateSchedule: (weeks?: number) => void; onRebalance: () => void;
     onToggleCleaningIncluded: (memberId: string) => void;
-    onCompleteAssignment: (id: string) => void;
+    onSetAssignmentCompleted: (id: string, completed: boolean) => void;
     onOverrideAssignmentMember: (id: string, memberId: string) => void;
 };
 
@@ -79,7 +79,7 @@ export default function CleaningCalendar(props: Props) {
             <p className="muted">Te dyżury obowiązują przez cały tydzień — wykonaj je w dowolnym dniu.</p>
             <div className="space-y-3 mt-4">{duties.length ? duties.map(assignment => <article key={assignment.id} className={`duty ${assignment.status === "completed" ? "done" : ""}`}>
                 <div className="duty-heading"><div><h4>{assignment.zoneName}</h4><p>{assignment.assignedMemberName}</p></div>
-                    <label className="completion-toggle"><input type="checkbox" checked={assignment.status === "completed"} disabled={assignment.status === "completed" || assignment.assignedMemberId !== state.activeMemberId} onChange={() => props.onCompleteAssignment(assignment.id)} /><span>{assignment.status === "completed" ? "Wykonano" : assignment.assignedMemberId === state.activeMemberId ? "Gotowe" : "Do wykonania"}</span></label>
+                    <label className="completion-toggle"><input type="checkbox" checked={assignment.status === "completed"} disabled={!canChangeCleaningCompletion(assignment, state.activeMemberId)} aria-label={`${assignment.status === "completed" ? "Cofnij wykonanie" : "Potwierdź wykonanie"}: ${assignment.zoneName}`} onChange={event => props.onSetAssignmentCompleted(assignment.id, event.target.checked)} /><span>{assignment.status === "completed" ? "Wykonano" : assignment.assignedMemberId === state.activeMemberId ? "Gotowe" : "Do wykonania"}</span></label>
                 </div>
                 {assignment.status === "completed" ? <p className="completion-time"><Check size={16} aria-hidden="true" /> {assignment.completedAt ? <time dateTime={assignment.completedAt}>{new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "long" }).format(new Date(assignment.completedAt))}</time> : "Brak daty wykonania"} · {getMemberName(state.members, assignment.completedById, state.formerMembers)}</p> : assignment.assignedMemberId === state.activeMemberId ? <label className="assignment-select"><span>Osoba odpowiedzialna{assignment.manualOverride ? " · zmiana ręczna" : ""}</span><select className="input" value={assignment.assignedMemberId ?? ""} onChange={e => props.onOverrideAssignmentMember(assignment.id, e.target.value)}><option value="">Nieprzypisane</option>{state.members.filter(m => m.includeInCleaning || m.id === assignment.assignedMemberId).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label> : <p className="muted mt-3">{assignment.assignedMemberId ? "Tylko przypisana osoba może ręcznie zmienić i potwierdzić ten dyżur." : "Dyżur czeka na przydział w automatycznej rotacji."}</p>}
             </article>) : <div className="empty-state"><CalendarDays size={28} /><h4>Brak dyżurów w tym tygodniu</h4><p>Sprawdź inny tydzień lub wygeneruj grafik w ustawieniach poniżej.</p></div>}</div>

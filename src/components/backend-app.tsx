@@ -88,6 +88,10 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
                 setError("Baza danych zablokowała ponowne rozdzielenie dyżurów. Nowy grafik nie został zapisany. Obsługa wspólnego grafiku wymaga aktualizacji.");
             } else if (message.includes("OIKOS_OWN_CLEANING_ONLY")) {
                 setError("Możesz zmieniać i potwierdzać tylko dyżury przypisane do Ciebie. Odśwież grafik i spróbuj ponownie.");
+            } else if (message.includes("OIKOS_OWN_EXPENSE_ONLY")) {
+                setError("Możesz usuwać i zmieniać tylko własne wydatki. Odśwież historię i spróbuj ponownie.");
+            } else if (message.includes("Invalid expense amount")) {
+                setError("Podaj kwotę większą od zera, z maksymalnie dwoma miejscami po przecinku.");
             } else if (message.includes("OIKOS_OWN_CONTRIBUTION_ONLY")) {
                 setError("Możesz zmieniać tylko własną wpłatę. Kwoty pozostałych domowników są tylko do odczytu.");
             } else if (message.includes("OIKOS_CONFLICT")) {
