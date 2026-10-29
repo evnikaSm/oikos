@@ -183,6 +183,11 @@ a real household. Without credentials, a setup screen offers the local demo.
 
 ## Checks
 
+For the **Dom → Wyzeruj wpłaty wszystkich** button, apply
+`supabase/migrations/202610290001_reset_contributions.sql` in the Supabase SQL editor.
+Any household member can reset all contribution amounts and confirmations after
+confirming in the UI. Expenses, shopping history, and the budget amount are preserved.
+
 - `npm run lint`
 - `npx tsc --noEmit`
 - `npm test`: runs rotation tests and the actual SQL migration in an isolated

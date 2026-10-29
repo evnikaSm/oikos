@@ -78,6 +78,7 @@ type RemoteHousehold = {
     state: OikosState;
     updateState: (updater: (prev: OikosState) => OikosState) => void;
     removeMember: (id: string) => void;
+    resetContributions: () => void;
 };
 
 export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) {
@@ -537,6 +538,10 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                             onCopyInvite={addDemoInviteCopy}
                             onToggleCleaningIncluded={toggleCleaningIncluded}
                             onRemoveMember={removeMember}
+                            onResetContributions={() => {
+                                if (remote) remote.resetContributions();
+                                else updateState(prev => ({ ...prev, members: prev.members.map(member => ({ ...member, contributionAmount: 0, contributionStatus: "unpaid", contributionPaidAt: null })) }));
+                            }}
                             onSaveBudget={saveBudgetSettings}
                             budgetAmount={budgetAmount}
                             setBudgetAmount={setBudgetAmount}
@@ -867,6 +872,7 @@ function BudgetTab({
                             <div>
                                 <p className="font-medium">{formatCurrency(expense.amount, state.monthlyBudget.currency)}</p>
                                 <p className="text-sm text-[var(--oikos-burgundy)]/70">{expense.note || expense.type}</p>
+                                <time dateTime={expense.createdAt} className="text-xs text-[var(--oikos-burgundy)]/55">{formatShortTime(expense.createdAt)}</time>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
                                 <p className="text-sm text-[var(--oikos-green)]">{getMemberName(state.members, expense.purchaserId, state.formerMembers)}</p>
@@ -934,6 +940,7 @@ function ShoppingTab({
                             <span className="flex-1">
                                 <span className="block font-medium">{item.name} {item.quantity ? <span className="text-[var(--oikos-burgundy)]/60">· {item.quantity}</span> : null}</span>
                                 <span className="block text-xs text-[var(--oikos-burgundy)]/55">Dodał(a) {getMemberName(state.members, item.creatorId, state.formerMembers)}</span>
+                                <time dateTime={item.createdAt} className="block text-xs text-[var(--oikos-burgundy)]/55">Dodano {formatShortTime(item.createdAt)}</time>
                             </span>
                             <span className="text-sm text-[var(--oikos-green)]">{item.estimatedPrice != null ? `~${formatCurrency(item.estimatedPrice, state.monthlyBudget.currency)}` : ""}</span>
                         </button>
@@ -945,6 +952,7 @@ function ShoppingTab({
 
             <section className="grid gap-3 md:grid-cols-2">
                 <InfoCard title="Zakupy" icon={ScanLine} actionText={activeTrip ? "Zakończ" : "Start"} onAction={activeTrip ? onFinishTrip : () => onOpenSheet("start-trip")}>
+                    {activeTrip && <p className="mb-2 text-sm text-[var(--oikos-green)]"><time dateTime={activeTrip.startedAt}>{nextTripLabel(activeTrip.startedAt)}</time></p>}
                     <p className="text-sm text-[var(--oikos-burgundy)]/70">{activeTrip ? `Kupione przez ${getMemberName(state.members, activeTrip.purchaserId, state.formerMembers)} · ${activeTripPurchasedCount} zaznaczone` : "Rozpocznij zakupy, żeby zamienić kliknięcia w realny wydatek."}</p>
                     <div className="mt-3 space-y-2">
                         {activeTrip ? activeTrip.itemSnapshots.slice(0, 4).map((snapshot) => (
@@ -959,12 +967,16 @@ function ShoppingTab({
                 <InfoCard title="Kupione z listy" icon={Check}>
                     <p className="text-sm text-[var(--oikos-burgundy)]/70">Produkty z listy kupione podczas zakończonych zakupów.</p>
                     <div className="mt-3 space-y-2">
-                        {purchasedItems.slice(0, 3).map((item) => (
+                        {purchasedItems.slice(0, 3).map((item) => {
+                            const trip = state.shoppingTrips.find(trip => trip.id === item.purchasedTripId);
+                            const purchasedAt = trip?.itemSnapshots.find(snapshot => snapshot.itemId === item.id)?.checkedAt ?? trip?.finishedAt;
+                            return (
                             <div key={item.id} className="flex items-center justify-between rounded-2xl bg-[var(--oikos-cream)] px-3 py-2 text-sm">
                                 <span>{item.name}</span>
-                                <span className="text-[var(--oikos-green)]">{item.purchasedTripId ? "Kupiono" : ""}</span>
+                                <span className="text-[var(--oikos-green)]">{purchasedAt ? <time dateTime={purchasedAt}>Kupiono {formatShortTime(purchasedAt)}</time> : item.purchasedTripId ? "Kupiono" : ""}</span>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </InfoCard>
             </section>
@@ -999,6 +1011,7 @@ function HouseTab({
     onToggleCleaningIncluded,
     onRemoveMember,
     onSaveBudget,
+    onResetContributions,
     budgetAmount,
     setBudgetAmount,
     t,
@@ -1010,10 +1023,12 @@ function HouseTab({
     onToggleCleaningIncluded: (memberId: string) => void;
     onRemoveMember: (memberId: string) => void;
     onSaveBudget: () => void;
+    onResetContributions: () => void;
     budgetAmount: string;
     setBudgetAmount: (value: string) => void;
     t: typeof copy;
 }) {
+    const [confirmReset, setConfirmReset] = useState(false);
     return (
         <div className="space-y-4">
             <section className="panel">
@@ -1092,6 +1107,17 @@ function HouseTab({
 
                 </div>
                 <p className="muted mt-3">Wpłaty domowników zmienisz w zakładce Budżet.</p>
+                <div className="mt-5 border-t border-[var(--oikos-line)] pt-4">
+                    <h3 className="font-semibold">Reset wpłat</h3>
+                    <p className="muted mt-2">Ustawia wpłaty wszystkich domowników na 0 zł i usuwa ich potwierdzenia. Historia wydatków i kwota budżetu pozostają bez zmian.</p>
+                    {confirmReset ? <div className="mt-3 space-y-3">
+                        <p role="alert" className="text-sm">Wyzerować wpłaty wszystkich domowników? Tej operacji nie można cofnąć.</p>
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" className="btn-primary text-sm" onClick={() => { onResetContributions(); setConfirmReset(false); }}>Tak, wyzeruj wpłaty</button>
+                            <button type="button" className="btn-secondary text-sm" onClick={() => setConfirmReset(false)}>Anuluj</button>
+                        </div>
+                    </div> : <button type="button" className="btn-secondary mt-3 text-sm" onClick={() => setConfirmReset(true)}>Wyzeruj wpłaty wszystkich</button>}
+                </div>
             </section>
 
             {!connected && <section className="panel">

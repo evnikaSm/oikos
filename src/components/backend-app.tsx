@@ -159,6 +159,13 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
             const { error } = await client.rpc("oikos_remove_member", { target_id: id, expected_revision: record.revision });
             if (error) throw error;
             await refresh();
+        }), resetContributions: () => void run(async () => {
+            const { error } = await client.rpc("oikos_reset_contributions", { house_id: record.id, expected_revision: record.revision });
+            if (error) {
+                if (error.code === "PGRST202") throw new Error("Reset wpłat wymaga aktualizacji bazy danych: zastosuj migrację 202610290001_reset_contributions.sql.");
+                throw error;
+            }
+            await refresh(); setNotice("Wyzerowano wpłaty wszystkich domowników.");
         }) }} /></div>
     </>;
 
