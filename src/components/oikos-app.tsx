@@ -40,6 +40,7 @@ import {
     getMonthlySpent,
     getRemainingBudget,
     resetBudgetPeriod,
+    resetRemainingBudget,
     getOutstandingContributors,
     getPurchasedShoppingItems,
     getShoppingEstimate,
@@ -81,6 +82,7 @@ type RemoteHousehold = {
     updateState: (updater: (prev: OikosState) => OikosState) => void;
     removeMember: (id: string) => void;
     resetContributions: () => void;
+    resetRemaining: () => void;
 };
 
 export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) {
@@ -536,6 +538,10 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                             onCopyInvite={addDemoInviteCopy}
                             onToggleCleaningIncluded={toggleCleaningIncluded}
                             onRemoveMember={removeMember}
+                            onResetRemaining={() => {
+                                if (remote) remote.resetRemaining();
+                                else updateState(resetRemainingBudget);
+                            }}
                             onResetContributions={() => {
                                 if (remote) remote.resetContributions();
                                 else updateState(resetBudgetPeriod);
@@ -988,6 +994,7 @@ function HouseTab({
     onRemoveMember,
     onSaveBudget,
     onResetContributions,
+    onResetRemaining,
     budgetAmount,
     setBudgetAmount,
     t,
@@ -1000,11 +1007,13 @@ function HouseTab({
     onRemoveMember: (memberId: string) => void;
     onSaveBudget: () => void;
     onResetContributions: () => void;
+    onResetRemaining: () => void;
     budgetAmount: string;
     setBudgetAmount: (value: string) => void;
     t: typeof copy;
 }) {
     const [confirmReset, setConfirmReset] = useState(false);
+    const [confirmBalanceReset, setConfirmBalanceReset] = useState(false);
     return (
         <div className="space-y-4">
             <section className="panel">
@@ -1086,6 +1095,7 @@ function HouseTab({
                 <div className="mt-5 border-t border-[var(--oikos-line)] pt-4">
                     <h3 className="font-semibold">Reset wpłat</h3>
                     <p className="muted mt-2">Ustawia wpłaty wszystkich domowników na 0 zł i usuwa ich potwierdzenia. Historia wydatków i kwota budżetu pozostają bez zmian.</p>
+                    <div className="flex flex-wrap items-start gap-3">
                     {confirmReset ? <div className="mt-3 space-y-3">
                         <p role="alert" className="text-sm">Wyzerować wpłaty wszystkich domowników? Tej operacji nie można cofnąć.</p>
                         <div className="flex flex-wrap gap-2">
@@ -1093,6 +1103,14 @@ function HouseTab({
                             <button type="button" className="btn-secondary text-sm" onClick={() => setConfirmReset(false)}>Anuluj</button>
                         </div>
                     </div> : <button type="button" className="btn-secondary mt-3 text-sm" onClick={() => setConfirmReset(true)}>Wyzeruj wpłaty wszystkich</button>}
+                    {confirmBalanceReset ? <div className="mt-3 space-y-3">
+                        <p role="alert" className="text-sm">Wyzerować saldo „Zostało”? Tej operacji nie można cofnąć.</p>
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" className="btn-primary text-sm" onClick={() => { onResetRemaining(); setConfirmBalanceReset(false); }}>Tak, wyzeruj saldo</button>
+                            <button type="button" className="btn-secondary text-sm" onClick={() => setConfirmBalanceReset(false)}>Anuluj</button>
+                        </div>
+                    </div> : <button type="button" className="btn-secondary mt-3 text-sm" onClick={() => setConfirmBalanceReset(true)}>Wyzeruj saldo</button>}
+                    </div>
                 </div>
             </section>
 

@@ -199,3 +199,7 @@ forward. Expense and shopping history are preserved.
 
 Live Google consent and your hosted Supabase configuration must additionally be
 checked using the two-account flow above.
+
+The separate **Dom -> Wyzeruj saldo** button resets only the remaining balance.
+Apply `supabase/migrations/202611020002_reset_remaining.sql` to enable it for connected households.
+Contributions, spending, monthly budget and history are preserved; new activity updates the balance from zero.

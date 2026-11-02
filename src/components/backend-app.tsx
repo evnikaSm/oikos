@@ -159,6 +159,13 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
             const { error } = await client.rpc("oikos_remove_member", { target_id: id, expected_revision: record.revision });
             if (error) throw error;
             await refresh();
+        }), resetRemaining: () => void run(async () => {
+            const { error } = await client.rpc("oikos_reset_remaining", { house_id: record.id, expected_revision: record.revision });
+            if (error) {
+                if (error.code === "PGRST202") throw new Error("Zastosuj migrację 202611020002_reset_remaining.sql w Supabase.");
+                throw error;
+            }
+            await refresh(); setNotice("Wyzerowano saldo.");
         }), resetContributions: () => void run(async () => {
             const { error } = await client.rpc("oikos_reset_contributions", { house_id: record.id, expected_revision: record.revision });
             if (error) {

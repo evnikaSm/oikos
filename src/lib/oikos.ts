@@ -399,6 +399,12 @@ export function getRemainingBudget(state: OikosState) {
         - getMonthlySpent(state.groceryExpenses, state.monthlyBudget)) * 100) / 100;
 }
 
+export function resetRemainingBudget(state: OikosState): OikosState {
+    return { ...state, monthlyBudget: { ...state.monthlyBudget,
+        carryOver: Math.round((getMonthlySpent(state.groceryExpenses, state.monthlyBudget)
+            - getMonthlyContributed(state.members)) * 100) / 100 } };
+}
+
 export function resetBudgetPeriod(state: OikosState): OikosState {
     return { ...state,
         monthlyBudget: { ...state.monthlyBudget, budgetAmount: 0, carryOver: getRemainingBudget(state),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { resetBudgetPeriod } from '../src/lib/oikos.ts';
+import { resetRemainingBudget, resetBudgetPeriod } from '../src/lib/oikos.ts';
 import { PGlite } from '@electric-sql/pglite';
 
 const anna='11111111-1111-4111-8111-111111111111';
@@ -62,6 +62,16 @@ test('Supabase migration: membership isolation, concurrency, timestamps and pres
  const withExpense=structuredClone(h.state);
  withExpense.groceryExpenses=[{id:'previous-period',purchaserId:anna,amount:42.75,note:'Old',createdAt:new Date().toISOString(),type:'manual',tripId:null}];
  await save(h,withExpense);[h]=await read();
+ await db.exec('reset role');
+ await db.exec(await readFile(new URL('../supabase/migrations/202611020002_reset_remaining.sql',import.meta.url),'utf8'));
+ const resetBalance=()=>db.query('select public.oikos_reset_remaining($1,$2)',[h.id,h.revision]);
+ await asUser(outsider);await assert.rejects(resetBalance(),/Access denied/);
+ await db.exec('reset role; set role anon');await assert.rejects(resetBalance(),/permission denied/);
+ await asUser(anna);
+ const beforeBalance=structuredClone(h);
+ await resetBalance();await assert.rejects(resetBalance(),/OIKOS_CONFLICT/);
+ [h]=await read();assert.deepEqual(h.state,resetRemainingBudget(beforeBalance.state));
+ await resetBalance();[h]=await read();assert.deepEqual(h.state,resetRemainingBudget(beforeBalance.state));
  const beforeReset=structuredClone(h);
  await reset();
  await assert.rejects(reset(),/OIKOS_CONFLICT/);

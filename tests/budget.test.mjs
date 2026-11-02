@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { demoState, resetBudgetPeriod, getRemainingBudget, getMonthlyContributed, getMonthlySpent, parseMoneyAmount, removeOwnExpense } from '../src/lib/oikos.ts';
+import { demoState, resetRemainingBudget, resetBudgetPeriod, getRemainingBudget, getMonthlyContributed, getMonthlySpent, parseMoneyAmount, removeOwnExpense } from '../src/lib/oikos.ts';
 
 test('all entered contributions count, independently of confirmation', () => {
  const members=demoState.members.map((m,i)=>({...m,contributionAmount:[100,200,0][i],contributionStatus:'unpaid'}));
@@ -59,5 +59,19 @@ test('period reset carries balance, preserves history and counts only new activi
   assert.equal(getMonthlySpent(next.groceryExpenses,next.monthlyBudget),12.25);
   assert.equal(getRemainingBudget(next),Math.round((balance+88.25)*100)/100);
   assert.equal(getRemainingBudget(resetBudgetPeriod(next)),getRemainingBudget(next));
+ }
+});
+
+
+test('separate balance reset preserves all other data and tracks subsequent activity', () => {
+ for (const carryOver of [0,125.5,-500]) {
+  const state={...demoState,monthlyBudget:{...demoState.monthlyBudget,carryOver}};
+  const next=resetRemainingBudget(state);
+  assert.equal(getRemainingBudget(next),0);
+  assert.deepEqual({...next,monthlyBudget:state.monthlyBudget},state);
+  assert.deepEqual(resetRemainingBudget(next),next);
+  assert.equal(getRemainingBudget({...next,members:next.members.map((m,i)=>i===0?{...m,contributionAmount:m.contributionAmount+100}:m)}),100);
+  assert.equal(getRemainingBudget({...next,groceryExpenses:[...next.groceryExpenses,{...next.groceryExpenses[0],id:'new',amount:12.25}]}),-12.25);
+  assert.equal(getRemainingBudget(resetBudgetPeriod(next)),0);
  }
 });
