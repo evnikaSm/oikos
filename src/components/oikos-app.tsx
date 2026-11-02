@@ -636,8 +636,6 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
 
 function HomeTab({
     state,
-    activeTrip,
-    activeTripPurchasedCount,
     shoppingEstimate,
     remaining,
     contributed,
@@ -646,7 +644,6 @@ function HomeTab({
     pendingContributors,
     onOpenSheet,
     onToggleContribution,
-    onFinishTrip,
     onNavigate,
     t,
 }: {
@@ -715,10 +712,6 @@ function HomeTab({
                     <p className="mt-3 text-sm text-[var(--oikos-green)]">{formatCurrency(remaining, state.monthlyBudget.currency)} zostało w tym miesiącu</p>
                 </InfoCard>
 
-                <InfoCard title="Zakupy" icon={ScanLine} actionText={activeTrip ? "Zakończ" : "Start"} onAction={activeTrip ? onFinishTrip : () => onOpenSheet("start-trip")}>
-                    <p className="text-sm text-[var(--oikos-burgundy)]/70">{activeTrip ? `${activeTrip.storeName || "Bieżące zakupy"} · ${activeTripPurchasedCount} w koszyku` : "Nie trwa teraz żaden spacer po sklepie."}</p>
-                    <p className="mt-3 text-sm text-[var(--oikos-green)]">{activeTrip ? nextTripLabel(activeTrip.startedAt) : "Gotowe, gdy ktoś ruszy po zakupy."}</p>
-                </InfoCard>
             </section>
 
             <section className="grid gap-3">
@@ -1258,8 +1251,4 @@ function QuickActionRow({ icon: Icon, label, onClick }: { icon: LucideIcon; labe
             <ArrowRight size={16} className="text-[var(--oikos-burgundy)]/45" />
         </button>
     );
-}
-
-function nextTripLabel(startedAt: string) {
-    return `Rozpoczęto ${formatShortTime(startedAt)}`;
 }
