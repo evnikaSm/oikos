@@ -464,17 +464,14 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                     {activeTab === "shopping" && (
                         <ShoppingTab
                             state={state}
-                            activeTrip={activeTrip}
                             activeItems={activeItems}
                             purchasedItems={purchasedItems}
                             shoppingEstimate={shoppingEstimate}
                             remaining={remaining}
-                            activeTripPurchasedCount={activeTripPurchasedCount}
                             onToggleItem={(itemId) => {
-                                if (!activeTrip) return;
                                 updateState((prev) => {
                                     const now = new Date().toISOString();
-                                    const trip = prev.shoppingTrips.find((entry) => entry.id === activeTrip.id);
+                                    const trip = prev.shoppingTrips.find((entry) => entry.status === "active");
                                     const isChecked = prev.shoppingItems.find((item) => item.id === itemId)?.checked;
                                     const purchasedItemIds = new Set(trip?.purchasedItemIds ?? []);
                                     if (isChecked) purchasedItemIds.delete(itemId);
@@ -485,7 +482,7 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                                             item.id === itemId ? { ...item, checked: !item.checked } : item,
                                         ),
                                         shoppingTrips: prev.shoppingTrips.map((tripItem) =>
-                                            tripItem.id === activeTrip.id
+                                            tripItem.id === trip?.id
                                                 ? {
                                                     ...tripItem,
                                                     itemSnapshots: tripItem.itemSnapshots.map((snapshot) =>
@@ -500,7 +497,6 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                                     };
                                 });
                             }}
-                            onFinishTrip={finishTrip}
                             onOpenSheet={setSheetMode}
                         />
                     )}
@@ -889,25 +885,19 @@ function BudgetTab({
 
 function ShoppingTab({
     state,
-    activeTrip,
     activeItems,
     purchasedItems,
     shoppingEstimate,
     remaining,
-    activeTripPurchasedCount,
     onToggleItem,
-    onFinishTrip,
     onOpenSheet,
 }: {
     state: OikosState;
-    activeTrip: OikosState["shoppingTrips"][number] | null;
     activeItems: ShoppingItem[];
     purchasedItems: ShoppingItem[];
     shoppingEstimate: number;
     remaining: number;
-    activeTripPurchasedCount: number;
     onToggleItem: (itemId: string) => void;
-    onFinishTrip: () => void;
     onOpenSheet: (mode: SheetMode) => void;
 }) {
     return (
@@ -933,6 +923,9 @@ function ShoppingTab({
                     {activeItems.length ? activeItems.map((item) => (
                         <button
                             key={item.id}
+                            role="checkbox"
+                            aria-checked={item.checked}
+                            aria-label={`${item.name}: kupione`}
                             onClick={() => onToggleItem(item.id)}
                             className="flex w-full items-center rounded-2xl bg-[var(--oikos-cream)] px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-md"
                         >
@@ -950,20 +943,7 @@ function ShoppingTab({
                 </div>
             </section>
 
-            <section className="grid gap-3 md:grid-cols-2">
-                <InfoCard title="Zakupy" icon={ScanLine} actionText={activeTrip ? "Zakończ" : "Start"} onAction={activeTrip ? onFinishTrip : () => onOpenSheet("start-trip")}>
-                    {activeTrip && <p className="mb-2 text-sm text-[var(--oikos-green)]"><time dateTime={activeTrip.startedAt}>{nextTripLabel(activeTrip.startedAt)}</time></p>}
-                    <p className="text-sm text-[var(--oikos-burgundy)]/70">{activeTrip ? `Kupione przez ${getMemberName(state.members, activeTrip.purchaserId, state.formerMembers)} · ${activeTripPurchasedCount} zaznaczone` : "Rozpocznij zakupy, żeby zamienić kliknięcia w realny wydatek."}</p>
-                    <div className="mt-3 space-y-2">
-                        {activeTrip ? activeTrip.itemSnapshots.slice(0, 4).map((snapshot) => (
-                            <div key={snapshot.itemId} className="flex items-center justify-between rounded-2xl bg-[var(--oikos-cream)] px-3 py-2 text-sm">
-                                <span>{snapshot.name}</span>
-                                <span className="text-[var(--oikos-green)]">{snapshot.checkedAt ? "Wzięte" : "Czeka"}</span>
-                            </div>
-                        )) : null}
-                    </div>
-                </InfoCard>
-
+            <section>
                 <InfoCard title="Kupione z listy" icon={Check}>
                     <p className="text-sm text-[var(--oikos-burgundy)]/70">Produkty z listy kupione podczas zakończonych zakupów.</p>
                     <div className="mt-3 space-y-2">
