@@ -186,7 +186,9 @@ a real household. Without credentials, a setup screen offers the local demo.
 For the **Dom → Wyzeruj wpłaty wszystkich** button, apply
 `supabase/migrations/202610290001_reset_contributions.sql` in the Supabase SQL editor.
 Any household member can reset all contribution amounts and confirmations after
-confirming in the UI. Expenses, shopping history, and the budget amount are preserved.
+confirming in the UI. Apply `supabase/migrations/202611020001_reset_budget_period.sql`
+to also reset the monthly budget and spending counter, carrying the remaining balance
+forward. Expense and shopping history are preserved.
 
 - `npm run lint`
 - `npx tsc --noEmit`

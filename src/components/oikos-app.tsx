@@ -38,6 +38,8 @@ import {
     parseMoneyAmount,
     removeOwnExpense,
     getMonthlySpent,
+    getRemainingBudget,
+    resetBudgetPeriod,
     getOutstandingContributors,
     getPurchasedShoppingItems,
     getShoppingEstimate,
@@ -144,8 +146,8 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
     const purchasedItems = useMemo(() => getPurchasedShoppingItems(state.shoppingItems), [state.shoppingItems]);
     const shoppingEstimate = useMemo(() => getShoppingEstimate(state.shoppingItems), [state.shoppingItems]);
     const contributed = useMemo(() => getMonthlyContributed(state.members), [state.members]);
-    const spent = useMemo(() => getMonthlySpent(state.groceryExpenses), [state.groceryExpenses]);
-    const remaining = Math.round((contributed - spent) * 100) / 100;
+    const spent = useMemo(() => getMonthlySpent(state.groceryExpenses, state.monthlyBudget), [state.groceryExpenses, state.monthlyBudget]);
+    const remaining = getRemainingBudget(state);
     const uncheckedItems = activeItems.filter((item) => !item.checked).length;
     const pendingContributors = getOutstandingContributors(state.members);
     const cleaningParticipants = getCleaningParticipants(state.members);
@@ -536,7 +538,8 @@ export default function OikosApp({ remote }: { remote?: RemoteHousehold } = {}) 
                             onRemoveMember={removeMember}
                             onResetContributions={() => {
                                 if (remote) remote.resetContributions();
-                                else updateState(prev => ({ ...prev, members: prev.members.map(member => ({ ...member, contributionAmount: 0, contributionStatus: "unpaid", contributionPaidAt: null })) }));
+                                else updateState(resetBudgetPeriod);
+                                setBudgetAmount("0");
                             }}
                             onSaveBudget={saveBudgetSettings}
                             budgetAmount={budgetAmount}

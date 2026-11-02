@@ -17,6 +17,8 @@ export type MonthlyBudget = {
     monthKey: string;
     currency: string;
     budgetAmount: number;
+    carryOver?: number;
+    previousExpenseIds?: string[];
 };
 
 export type ShoppingItem = {
@@ -387,8 +389,23 @@ export function getShoppingEstimate(items: ShoppingItem[]) {
         .reduce((sum, item) => sum + (item.estimatedPrice ?? 0), 0);
 }
 
-export function getMonthlySpent(expenses: GroceryExpense[]) {
-    return expenses.reduce((sum, expense) => sum + Math.round(expense.amount * 100), 0) / 100;
+export function getMonthlySpent(expenses: GroceryExpense[], budget?: MonthlyBudget) {
+    const previous = new Set(budget?.previousExpenseIds ?? []);
+    return expenses.filter(expense => !previous.has(expense.id)).reduce((sum, expense) => sum + Math.round(expense.amount * 100), 0) / 100;
+}
+
+export function getRemainingBudget(state: OikosState) {
+    return Math.round(((state.monthlyBudget.carryOver ?? 0) + getMonthlyContributed(state.members)
+        - getMonthlySpent(state.groceryExpenses, state.monthlyBudget)) * 100) / 100;
+}
+
+export function resetBudgetPeriod(state: OikosState): OikosState {
+    return { ...state,
+        monthlyBudget: { ...state.monthlyBudget, budgetAmount: 0, carryOver: getRemainingBudget(state),
+            previousExpenseIds: state.groceryExpenses.map(expense => expense.id) },
+        members: state.members.map(member => ({ ...member, contributionAmount: 0,
+            contributionStatus: "unpaid", contributionPaidAt: null })),
+    };
 }
 
 export function removeOwnExpense(state: OikosState, expenseId: string): OikosState {

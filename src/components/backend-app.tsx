@@ -162,7 +162,7 @@ function ConnectedApp({ client }: { client: SupabaseClient }) {
         }), resetContributions: () => void run(async () => {
             const { error } = await client.rpc("oikos_reset_contributions", { house_id: record.id, expected_revision: record.revision });
             if (error) {
-                if (error.code === "PGRST202") throw new Error("Reset wpłat wymaga aktualizacji bazy danych: zastosuj migrację 202610290001_reset_contributions.sql.");
+                if (error.code === "PGRST202") throw new Error("Reset wpłat wymaga aktualizacji bazy danych: zastosuj migrację 202611020001_reset_budget_period.sql.");
                 throw error;
             }
             await refresh(); setNotice("Wyzerowano wpłaty wszystkich domowników.");

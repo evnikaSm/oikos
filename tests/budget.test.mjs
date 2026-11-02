@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { demoState, getMonthlyContributed, getMonthlySpent, parseMoneyAmount, removeOwnExpense } from '../src/lib/oikos.ts';
+import { demoState, resetBudgetPeriod, getRemainingBudget, getMonthlyContributed, getMonthlySpent, parseMoneyAmount, removeOwnExpense } from '../src/lib/oikos.ts';
 
 test('all entered contributions count, independently of confirmation', () => {
  const members=demoState.members.map((m,i)=>({...m,contributionAmount:[100,200,0][i],contributionStatus:'unpaid'}));
@@ -37,4 +37,27 @@ test('removing your manual or trip expense updates spending and keeps purchase h
   assert.deepEqual(removeOwnExpense(other,expense.id),other);
  }
  assert.deepEqual(removeOwnExpense(demoState,'missing'),demoState);
+});
+
+
+test('period reset carries balance, preserves history and counts only new activity', () => {
+ for (const amount of [500, 0, 10.25]) {
+  const state=structuredClone(demoState);
+  state.members=state.members.map((m,i)=>({...m,contributionAmount:i===0?amount:0}));
+  state.groceryExpenses=[{...demoState.groceryExpenses[0],id:'old',amount:42.75}];
+  const balance=getRemainingBudget(state);
+  const next=resetBudgetPeriod(state);
+  assert.equal(next.monthlyBudget.budgetAmount,0);
+  assert.equal(getMonthlyContributed(next.members),0);
+  assert.equal(getMonthlySpent(next.groceryExpenses,next.monthlyBudget),0);
+  assert.equal(getRemainingBudget(next),balance);
+  assert.deepEqual(next.groceryExpenses,state.groceryExpenses);
+  assert.deepEqual(next.shoppingTrips,state.shoppingTrips);
+  assert.deepEqual(resetBudgetPeriod(next),next);
+  next.members[0].contributionAmount=100.5;
+  next.groceryExpenses.push({...next.groceryExpenses[0],id:'new',amount:12.25});
+  assert.equal(getMonthlySpent(next.groceryExpenses,next.monthlyBudget),12.25);
+  assert.equal(getRemainingBudget(next),Math.round((balance+88.25)*100)/100);
+  assert.equal(getRemainingBudget(resetBudgetPeriod(next)),getRemainingBudget(next));
+ }
 });
